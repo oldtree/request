@@ -5,9 +5,16 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
+
+	"net/http/cookiejar"
 
 	log "github.com/sirupsen/logrus"
 )
+
+type HandResponse interface {
+	HandleResponse()
+}
 
 type Request struct {
 	url      string
@@ -15,18 +22,25 @@ type Request struct {
 	path     string
 	scheme   string
 	method   string
-	headers  map[string][]string
+	headers  map[string]interface{}
 	rawQuery string
-	timeout  int64
+	timeout  time.Duration
 
 	totalRequest int
 	parallel     int
 	debug        bool
 
-	bodyType string
-	body     io.ReadWriter
+	contentType string
+	body        io.ReadWriter
 
-	req *http.Request
+	req    *http.Request
+	cookie map[string]*cookiejar.Jar
+
+	HandResp HandResponse
+}
+
+func NewRequest() *Request {
+	return nil
 }
 
 func (r *Request) Scheme(scheme string) *Request {
@@ -34,8 +48,8 @@ func (r *Request) Scheme(scheme string) *Request {
 	return r
 }
 
-func (r *Request) BodyType(bodyType string) *Request {
-	r.bodyType = bodyType
+func (r *Request) ContentType(contentType string) *Request {
+	r.contentType = contentType
 	return r
 }
 
@@ -53,7 +67,7 @@ func (r *Request) EnableDebug() *Request {
 	return r
 }
 
-func (r *Request) ParseUrl(urlstr string) *Request {
+func (r *Request) parseUrl(urlstr string) *Request {
 	urlbody, err := url.Parse(urlstr)
 	if err != nil {
 		log.Errorf("parse url failed : ", err.Error())
@@ -64,6 +78,10 @@ func (r *Request) ParseUrl(urlstr string) *Request {
 	r.host = urlbody.Host
 	r.rawQuery = urlbody.RawQuery
 	return r
+}
+
+func (r *Request) Url(utlstr string) *Request {
+	return r.parseUrl(utlstr)
 }
 
 func (r *Request) Host(host string) *Request {
@@ -81,12 +99,51 @@ func (r *Request) Body(body io.ReadWriter) *Request {
 	return r
 }
 
-func (r *Request) Build() *Request {
-	client := http.NewRequest
+func (r *Request) BuildRequest() *Request {
+	urlpath := &url.URL{
+		User: nil,
+		Host: r.host,
+	}
+	clientRequest, err := http.NewRequest(r.method, urlpath.String(), r.body)
+	if err != nil {
+		log.Info("build request failed")
+	}
+	r.req = clientRequest
 	return r
 }
 
-func (r *Request) Timeout() *Request {
+func (r *Request) Get() *Request {
+	r.method = "GET"
+	return r
+}
+
+func (r *Request) Post() *Request {
+	r.method = "POST"
+	return r
+}
+
+func (r *Request) Put() *Request {
+	r.method = "PUT"
+	return r
+}
+
+func (r *Request) Delete() *Request {
+	r.method = "DELETE"
+	return r
+}
+
+func (r *Request) Head() *Request {
+	r.method = "HEAD"
+	return r
+}
+
+func (r *Request) Patch() *Request {
+	r.method = "PATCH"
+	return r
+}
+
+func (r *Request) Timeout(timeout time.Duration) *Request {
+	r.timeout = timeout
 	return r
 }
 
@@ -94,10 +151,19 @@ func (r *Request) Do() *Request {
 	return r
 }
 
-func (r *Request) HandleResponse() *Request {
-	return r
+func (r *Request) HandleResponse() {
+	return
 }
 
-func (r *Request) Context() context.Context {
-	return nil
+func (r *Request) Context(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.TODO()
+	}
+	var newctx context.Context
+	if r.timeout != 0 {
+		newctx, _ = context.WithTimeout(ctx, r.timeout)
+		return newctx
+	}
+	newctx = context.Background()
+	return newctx
 }
