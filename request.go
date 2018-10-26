@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"net/http/cookiejar"
+	"net/http/httptrace"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -17,15 +18,16 @@ type HandResponse interface {
 }
 
 type Request struct {
-	url      string
-	host     string
-	path     string
-	scheme   string
-	method   string
-	headers  map[string]interface{}
-	rawQuery string
-	timeout  time.Duration
+	url string
 
+	host   string
+	path   string
+	scheme string
+	method string
+
+	rawQuery     string
+	timeout      time.Duration
+	headers      http.Header
 	totalRequest int
 	parallel     int
 	debug        bool
@@ -36,7 +38,10 @@ type Request struct {
 	req    *http.Request
 	cookie map[string]*cookiejar.Jar
 
-	HandResp HandResponse
+	HandResp   HandResponse
+	transport  http.Transport
+	Httptrace  *httptrace.ClientTrace
+	HttpClient *http.Client
 }
 
 func NewRequest() *Request {
@@ -81,6 +86,7 @@ func (r *Request) parseUrl(urlstr string) *Request {
 }
 
 func (r *Request) Url(utlstr string) *Request {
+	r.url = utlstr
 	return r.parseUrl(utlstr)
 }
 
@@ -99,47 +105,83 @@ func (r *Request) Body(body io.ReadWriter) *Request {
 	return r
 }
 
-func (r *Request) BuildRequest() *Request {
+func (r *Request) buildRequest() *Request {
 	urlpath := &url.URL{
 		User: nil,
 		Host: r.host,
 	}
-	clientRequest, err := http.NewRequest(r.method, urlpath.String(), r.body)
-	if err != nil {
-		log.Info("build request failed")
+	switch r.method {
+	case "GET":
+		clientRequest, err := http.NewRequest(r.method, urlpath.String(), r.body)
+		if err != nil {
+			log.Error("build request failed")
+			panic("build request failed")
+		}
+		r.req = clientRequest
+	case "POST":
+		clientRequest, err := http.NewRequest(r.method, urlpath.String(), r.body)
+		if err != nil {
+			log.Info("build request failed")
+		}
+		r.req = clientRequest
+	case "DELETE":
+		clientRequest, err := http.NewRequest(r.method, urlpath.String(), r.body)
+		if err != nil {
+			log.Info("build request failed")
+		}
+		r.req = clientRequest
+	case "PUT":
+		clientRequest, err := http.NewRequest(r.method, urlpath.String(), r.body)
+		if err != nil {
+			log.Info("build request failed")
+		}
+		r.req = clientRequest
+	case "HEAD":
+		clientRequest, err := http.NewRequest(r.method, urlpath.String(), r.body)
+		if err != nil {
+			log.Info("build request failed")
+		}
+		r.req = clientRequest
+	case "OPTIONS":
+		clientRequest, err := http.NewRequest(r.method, urlpath.String(), r.body)
+		if err != nil {
+			log.Info("build request failed")
+		}
+		r.req = clientRequest
+	default:
+		panic("unsupport http method")
 	}
-	r.req = clientRequest
 	return r
 }
 
 func (r *Request) Get() *Request {
 	r.method = "GET"
-	return r
+	return r.buildRequest()
 }
 
 func (r *Request) Post() *Request {
 	r.method = "POST"
-	return r
+	return r.buildRequest()
 }
 
 func (r *Request) Put() *Request {
 	r.method = "PUT"
-	return r
+	return r.buildRequest()
 }
 
 func (r *Request) Delete() *Request {
 	r.method = "DELETE"
-	return r
+	return r.buildRequest()
 }
 
 func (r *Request) Head() *Request {
 	r.method = "HEAD"
-	return r
+	return r.buildRequest()
 }
 
-func (r *Request) Patch() *Request {
-	r.method = "PATCH"
-	return r
+func (r *Request) OPTIONS() *Request {
+	r.method = "OPTIONS"
+	return r.buildRequest()
 }
 
 func (r *Request) Timeout(timeout time.Duration) *Request {
@@ -148,6 +190,7 @@ func (r *Request) Timeout(timeout time.Duration) *Request {
 }
 
 func (r *Request) Do() *Request {
+	resp, err := r.HttpClient.Do(r.req)
 	return r
 }
 
